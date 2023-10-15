@@ -109,9 +109,7 @@ class TgBotClass
             CURLOPT_TIMEOUT => 10,
             CURLOPT_POSTFIELDS => [
                 'chat_id' => $chat_id,
-                'parse_mode' => 'HTML',
-                'text' => $text,
-                'reply_markup' => $reply_markup,
+                'parse_mode' => 'HTML'
             ]
         ];
 
