@@ -1,5 +1,5 @@
 <?php
-(isset($LANG)) ? $LANG : 'ru';
+$LANG = isset($LANG) ? $LANG : 'ru';
 if ($LANG == 'ru') {
     $ERROR["err"] = "Ошибка:";
     
