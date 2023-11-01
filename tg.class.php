@@ -2,20 +2,11 @@
 class TgBotClass
 {
     public $BOT_TOKEN;
-    public $TABLE;
-    public $MYSQLI;
     public $DATA;
     public $MSG_INFO;
 
-    function __construct($token, $server='localhost', $user='', $pswd='', $db='', $table=''){
+    function __construct($token){
         $this->BOT_TOKEN = $token; 
-        $this->TABLE = $table;
-        if ($user !== '') {
-            $this->MYSQLI = new mysqli($server, $user, $pswd, $db);
-            if ($this->MYSQLI->connect_errno) {
-                $error = $this->MYSQLI->connect_error; // TODO output error or save
-            }
-        }
     }
 
     // use only once for set webhook - $path = https://your_site.org/your_bot_path.php
@@ -39,39 +30,75 @@ class TgBotClass
 
     public function get_data($dataInput) {
         $this->DATA = json_decode($dataInput, true);
-        $this->MSG_INFO['update_id'] = $this->DATA['update_id'];
-        $this->MSG_INFO['msg_type'] = 'message';
+        if (isset($this->DATA['update_id'])) {
+            $this->MSG_INFO['update_id'] = $this->DATA['update_id'];
+        };
+        $this->MSG_INFO['text'] = $this->DATA['message']['text'];
+
         if (isset($this->DATA['message'])) {
+            $this->MSG_INFO['msg_type'] = 'message';
             $this->MSG_INFO['user_id'] = isset($this->DATA['message']['from']['id']) ? $this->DATA['message']['from']['id'] : 0;
             $this->MSG_INFO['chat_id'] = isset($this->DATA['message']['chat']['id']) ? $this->DATA['message']['chat']['id'] : 0;
-            $this->MSG_INFO['message_id'] = $this->DATA["message"]["message_id"];
-            $this->MSG_INFO['from_first_name'] = isset($this->DATA["message"]["from"]['first_name']) ? $this->DATA["message"]["from"]['first_name'] : "";
-            $this->MSG_INFO['from_last_name'] = isset($this->DATA["message"]["from"]['last_name']) ? $this->DATA["message"]["from"]['last_name'] : "";
-            $this->MSG_INFO['from_username'] = isset($this->DATA["message"]["from"]['username']) ? $this->DATA["message"]["from"]['username'] : "";
-            $this->MSG_INFO['type'] = $this->DATA["message"]["chat"]['type'];
-            $this->MSG_INFO['text'] = $this->DATA['message']["text"];
-            $this->MSG_INFO['date'] = $this->DATA['message']["date"];       
+            $this->MSG_INFO['message_id'] = $this->DATA['message']['message_id'];
+            $this->MSG_INFO['from_first_name'] = isset($this->DATA['message']['from']['first_name']) ? $this->DATA['message']['from']['first_name'] : '';
+            $this->MSG_INFO['from_last_name'] = isset($this->DATA['message']['from']['last_name']) ? $this->DATA['message']['from']['last_name'] : '';
+            $this->MSG_INFO['from_username'] = isset($this->DATA['message']['from']['username']) ? $this->DATA['message']['from']['username'] : '';
+            $this->MSG_INFO['type'] = $this->DATA['message']['chat']['type'];
+            $this->MSG_INFO['text'] = isset($this->DATA['message']['text']) ? $this->DATA['message']['text'] :'';
+            //если прислали стикер, а не текст
+            if (isset($this->DATA['message']['sticker'])) {
+                $this->MSG_INFO['text'] = 'sticker';
+                $this->MSG_INFO['sticker'] = array();
+                $this->MSG_INFO['sticker']['emoji'] = isset($this->DATA['message']['sticker']['emoji']) ? $this->DATA['message']['sticker']['emoji'] : '';
+                $this->MSG_INFO['sticker']['name'] = isset($this->DATA['message']['sticker']['set_name']) ? $this->DATA['message']['sticker']['set_name'] : '';                
+            }
+
+            $this->MSG_INFO['date'] = $this->DATA['message']['date'];
+            $this->MSG_INFO['name'] = ($this->MSG_INFO['from_first_name'] !== '') ? $this->MSG_INFO['from_first_name'] . ' ' . $this->MSG_INFO['from_last_name'] : $this->MSG_INFO['from_username'];
+
+            // проверяем если передана команда
+            if (isset($this->DATA['message']['text']) && isset($this->DATA['message']['entities'])) {
+                $this->MSG_INFO['command'] = $this->getCommand($this->DATA['message']['text'], $this->DATA['message']['entities']);
+            }
+            $this->MSG_INFO['entities'] = (isset($this->DATA['message']['entities'])) ? $this->DATA['message']['entities'] : '';
+            // если есть спец разметка приводим ее в виде html
+
+            if (is_null($this->DATA['message']['entities'])) {
+                $this->MSG_INFO['text_html'] = $this->DATA['message']['text'];
+            }else{
+                $this->MSG_INFO['text_html'] = $this->convertEntities($this->DATA['message']['text'], $this->DATA['message']['entities']); 
+            }
         }
+
         // если был ответ под кнопкой
         if (isset($this->DATA['callback_query'])) {
             $this->MSG_INFO['msg_type'] = 'callback';
             $this->MSG_INFO['user_id'] = isset($this->DATA['callback_query']['from']['id']) ? $this->DATA['callback_query']['from']['id'] : 0;
-            $this->MSG_INFO['chat_id'] = isset($this->DATA['callback_query']["message"]['chat']['id']) ? $this->DATA['callback_query']["message"]['chat']['id'] : 0;
-            $this->MSG_INFO['message_id'] = $this->DATA["callback_query"]["message"]["message_id"];
-            $this->MSG_INFO['from_first_name'] = isset($this->DATA["callback_query"]["from"]['first_name']) ? $this->DATA["callback_query"]["from"]['first_name'] : "";
-            $this->MSG_INFO['from_last_name'] = isset($this->DATA["callback_query"]["from"]['last_name']) ? $this->DATA["callback_query"]["from"]['last_name'] : "";
-            $this->MSG_INFO['from_username'] = isset($this->DATA["callback_query"]["from"]['username']) ? $this->DATA["callback_query"]["from"]['username'] : "";
-            $this->MSG_INFO['type'] = $this->DATA["callback_query"]["chat"]['type'];
-            $this->MSG_INFO['text'] = $this->DATA["callback_query"]["data"];
-            $this->MSG_INFO['date'] = $this->DATA["callback_query"]["date"];
+            $this->MSG_INFO['chat_id'] = isset($this->DATA['callback_query']['message']['chat']['id']) ? $this->DATA['callback_query']['message']['chat']['id'] : 0;
+            $this->MSG_INFO['message_id'] = $this->DATA['callback_query']['message']['message_id'];
+            $this->MSG_INFO['from_first_name'] = isset($this->DATA['callback_query']['from']['first_name']) ? $this->DATA['callback_query']['from']['first_name'] : '';
+            $this->MSG_INFO['from_last_name'] = isset($this->DATA['callback_query']['from']['last_name']) ? $this->DATA['callback_query']['from']['last_name'] : '';
+            $this->MSG_INFO['from_username'] = isset($this->DATA['callback_query']['from']['username']) ? $this->DATA['callback_query']['from']['username'] : '';
+            $this->MSG_INFO['type'] = $this->DATA['callback_query']['chat']['type'];
+            $this->MSG_INFO['text'] = $this->DATA['callback_query']['data'];
+            $this->MSG_INFO['date'] = $this->DATA['callback_query']['date'];
+            $this->MSG_INFO['name'] = ($this->MSG_INFO['from_first_name'] !== '') ? $this->MSG_INFO['from_first_name'] . ' ' . $this->MSG_INFO['from_last_name'] : $this->MSG_INFO['from_username'];
         }
-        $this->MSG_INFO['name'] = ($this->MSG_INFO['from_first_name'] !== "") ? $this->MSG_INFO['from_first_name'] . " " . $this->MSG_INFO['from_last_name'] : $this->MSG_INFO['from_username'];
+        // если сообщение написано самим ботом
+        if (isset($this->DATA['result']) && isset($this->DATA['result']['from']) && $this->DATA['result']['from']['is_bot']) {
+            $this->MSG_INFO['msg_type'] = 'bot_message';
+            $this->MSG_INFO['chat_id'] = isset($this->DATA['result']['chat']['id']) ? $this->DATA['result']['chat']['id'] : 0;
+            $this->MSG_INFO['user_id'] = isset($this->DATA['result']['chat']['id']) ? $this->DATA['result']['chat']['id'] : 0;
+            $this->MSG_INFO['text'] = isset($this->DATA['result']['text']) ? $this->DATA['result']['text'] : 0;
+            $this->MSG_INFO['message_id'] = $this->DATA['result']['message_id'];
+            $this->MSG_INFO['name'] = 'bot';
 
+        }
     }
 
 
     // функция отправки сообщени от бота в диалог с юзером
-    function msg_to_tg($chat_id, $text, $reply_markup = '') {
+    function msg_to_tg($chat_id, $text, $reply_markup = '', $silent = false) {
 
         $ch = curl_init();
         $ch_post = [
@@ -84,6 +111,7 @@ class TgBotClass
                 'parse_mode' => 'HTML',
                 'text' => $text,
                 'reply_markup' => $reply_markup,
+                'disable_notification' => $silent
             ]
         ];
 
@@ -91,11 +119,6 @@ class TgBotClass
         $reply_txt = curl_exec($ch);
         curl_close($ch);        
 
-        $reply = json_decode($reply_txt);
-        if ($this->MYSQLI) {
-            $sql = "INSERT INTO `messages` (`msg_id`, `user_id`,`chat_id`,`text`) VALUE (" . $reply->result->message_id . ", 0, " . $reply->result->chat->id . ", '" . $reply->result->text . "');";
-            $result = $this->MYSQLI->query($sql);
-        }
         return $reply_txt;
     }
 
@@ -116,18 +139,14 @@ class TgBotClass
         curl_setopt_array($ch, $ch_post);
         curl_exec($ch);
         curl_close($ch);
-
-        if ($this->MYSQLI) {
-            $sql = "DELETE FROM `messages` WHERE `msg_id` = " . $msg_id . ";";
-            $result = $this->MYSQLI->query($sql);
-        }
     }
 
 
     public function debug($output) {
-        $SITE_DIR = dirname(__FILE__) . "/";
+        $SITE_DIR = dirname(__FILE__) . '/';
         $file_message = file_get_contents($SITE_DIR . 'debug.txt');
-        file_put_contents($SITE_DIR . 'debug.txt',  $file_message . PHP_EOL . "output = " . $output);
+        $output = json_encode($output);
+        file_put_contents($SITE_DIR . 'debug.txt',  $file_message . PHP_EOL . 'output = ' . $output);
     }
 
 
@@ -145,6 +164,69 @@ class TgBotClass
         return json_encode(array(
             'inline_keyboard' => $arr,
         ));
+    }
+
+
+    private function getCommand(string $str, $arr = null): array {
+  
+        $result = array(
+        'is_command' => false,
+        'command' => null,
+        'args' => null
+        );
+
+        if (!is_array($arr) || is_null($str)) {
+            return $result;
+        }
+        foreach ($arr as $value) {
+            if ($value['type'] == 'bot_command') {
+                $offset = $value['offset'];
+                $length = $value['length'];
+                $result['is_command'] = true;
+                $result['command'] = trim(mb_substr($str, ($offset + 1), $length));
+                $result['args'] = trim(mb_substr($str, $offset + $length, strlen($str)));
+            }
+        }
+        return $result;
+    }    
+
+
+    private function convertEntities(string $str, array $arr): string {
+        if (!is_array($arr)) {
+            return $str;
+        }
+        $result_str = $str;
+        $arr_string = mb_str_split($str, 1);
+
+        $arr = array_reverse($arr);
+        foreach ($arr as $value) {
+            $offset = $value['offset'];
+            $length = $value['length'];
+            $type_switch = $value['type'];
+            $type = match ($type_switch) {
+                'bold' => array('<b>','</b>'),
+                'italic' => array('<i>','</i>'),
+                'code' => array('<code>','</code>'),
+                'pre' => array('<pre>','</pre>'),
+                'underline' => array('<u>','</u>'),
+                'strikethrough' => array('<s>','</s>'),
+                'spoiler' => array('<span class=\'tg-spoiler\'>','</span>'),
+                'url' => array('<a>','</a>'), 
+                // 'email' => array('<span>','</span>'),
+                // 'hashtag' => array('<span>','</span>'),
+                // 'bot_command' => array('<span>','</span>'),
+                // 'mention' => array('<span>','</span>'),
+                // 'CustomEmoji' => array('<span>','</span>'),
+                default => null,
+            };
+            if (!is_null($type)) {
+                array_splice($arr_string, $offset + $length, 0, $type[1]);
+                array_splice($arr_string, $offset, 0, $type[0]);
+            }
+        }
+        $result_str = implode('', $arr_string);
+
+        return $result_str;
     }
 }
 ?>
